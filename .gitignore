@@ -4,7 +4,6 @@
 *.sln
 *.zip
 *.pickle
-*.sav
 __pycache__/
 venv/*
 .vs/*

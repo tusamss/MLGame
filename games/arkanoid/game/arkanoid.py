@@ -1,118 +1,55 @@
 import pygame
 
-from .gamecore import GameStatus, PlatformAction, Scene
+from mlgame.gamedev.generic import quit_or_esc, KeyCommandMap
+from mlgame.gamedev.recorder import get_record_handler
+
+from . import gamecore
+from .gamecore import GameStatus, PlatformAction
+from ..communication import SceneInfo
+from ..main import get_log_dir
 
 class Arkanoid:
-    def __init__(self, difficulty, level: int):
-        self._scene = Scene(difficulty, level)
-        self._pygame_init()
+    def __init__(self, fps: int, level: int, record_progress, one_shot_mode):
+        self._init_pygame()
 
-    def _pygame_init(self):
-        """
-        Initial the pygame for drawing
-        """
+        self._fps = fps
+        self._scene = gamecore.Scene(level, True)
+        self._keyboard = KeyCommandMap({
+                pygame.K_LEFT:  PlatformAction.MOVE_LEFT,
+                pygame.K_RIGHT: PlatformAction.MOVE_RIGHT,
+            }, PlatformAction.NONE)
+
+        self._record_handler = get_record_handler(record_progress, {
+                "status": (GameStatus.GAME_OVER, GameStatus.GAME_PASS)
+            }, get_log_dir())
+        self._one_shot_mode = one_shot_mode
+
+    def _init_pygame(self):
         pygame.display.init()
         pygame.display.set_caption("Arkanoid")
-        self._surface = pygame.display.set_mode(Scene.area_rect.size)
+        self._screen = pygame.display.set_mode(gamecore.scene_area_size)
+        self._clock = pygame.time.Clock()
 
-        pygame.font.init()
-        self._font = pygame.font.Font(None, 22)
-        self._font_pos = (1, self._surface.get_height() - 21)
+    def game_loop(self):
+        while not quit_or_esc():
+            self._record_handler(self._scene.fill_scene_info_obj(SceneInfo()))
+            control_action = self._keyboard.get_command()
+            game_status = self._scene.update(control_action)
 
-    def update(self, command):
-        """
-        Update the game
-        """
-        command = (PlatformAction(command["ml"])
-            if command["ml"] in PlatformAction.__members__ else PlatformAction.NONE)
+            if game_status == GameStatus.GAME_OVER or \
+               game_status == GameStatus.GAME_PASS:
+                print(game_status.value)
+                self._record_handler(self._scene.fill_scene_info_obj(SceneInfo()))
 
-        game_status = self._scene.update(command)
-        self._draw_screen()
+                if self._one_shot_mode:
+                    return
 
-        if (game_status == GameStatus.GAME_OVER or
-            game_status == GameStatus.GAME_PASS):
-            print(game_status.value)
-            return "RESET"
+                self._scene.reset()
 
-    def _draw_screen(self):
-        """
-        Draw the scene to the display
-        """
-        self._surface.fill((0, 0, 0))
-        self._scene.draw_gameobjects(self._surface)
+            self._screen.fill((0, 0, 0))
+            self._scene.draw_gameobjects(self._screen)
+            pygame.display.flip()
 
-        font_surface = self._font.render(
-            "Catching ball: {}".format(self._scene.catch_ball_times),
-            True, (255, 255, 255))
-        self._surface.blit(font_surface, self._font_pos)
+            self._clock.tick(self._fps)
 
-        pygame.display.flip()
-
-    def reset(self):
-        """
-        Reset the game
-        """
-        self._scene.reset()
-
-    def get_player_scene_info(self):
-        """
-        Get the scene information to be sent to the player
-        """
-        return {"ml": self._scene.get_scene_info()}
-
-    def get_keyboard_command(self):
-        """
-        Get the command according to the pressed key command
-        """
-        key_pressed_list = pygame.key.get_pressed()
-
-        if   key_pressed_list[pygame.K_a]:     command = "SERVE_TO_LEFT"
-        elif key_pressed_list[pygame.K_d]:     command = "SERVE_TO_RIGHT"
-        elif key_pressed_list[pygame.K_LEFT]:  command = "MOVE_LEFT"
-        elif key_pressed_list[pygame.K_RIGHT]: command = "MOVE_RIGHT"
-        else: command = "NONE"
-
-        return {"ml": command}
-
-    def get_game_info(self):
-        """
-        Get the scene and object information for drawing on the web
-        """
-        return {
-            "scene": {
-                "size": [200, 500]
-            },
-            "game_object": [
-                { "name": "ball", "size": [5, 5], "color": [44, 185, 214] },
-                { "name": "platform", "size": [40, 5], "color": [66, 226, 126] },
-                { "name": "brick", "size": [25, 10], "color": [244, 158, 66] },
-                { "name": "hard_brick", "size": [25, 10], "color": [209, 31, 31] },
-            ]
-        }
-
-    def get_game_progress(self):
-        """
-        Get the position of game objects for drawing on the web
-        """
-        scene_info = self._scene.get_scene_info()
-
-        return {
-            "game_object": {
-                "ball": [scene_info["ball"]],
-                "platform": [scene_info["platform"]],
-                "brick": scene_info["bricks"],
-                "hard_brick": scene_info["hard_bricks"],
-            }
-        }
-
-    def get_game_result(self):
-        """
-        Get the game result for the web
-        """
-        scene_info = self._scene.get_scene_info()
-
-        return {
-            "frame_used": scene_info["frame"],
-            "result": [scene_info["status"]],
-            "brick_remain": len(scene_info["bricks"]),
-        }
+        pygame.quit()

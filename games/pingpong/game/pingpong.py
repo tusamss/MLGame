@@ -1,165 +1,101 @@
 import pygame
 
-from .gamecore import GameStatus, PlatformAction, Scene, color_1P, color_2P
+from mlgame.gamedev.generic import quit_or_esc, KeyCommandMap
+from mlgame.gamedev.recorder import get_record_handler
+
+from . import gamecore
+from .gamecore import GameStatus, PlatformAction
+from ..communication import SceneInfo
+from ..main import get_log_dir
 
 class PingPong:
-    def __init__(self, difficulty, game_over_score: int):
+    def __init__(self, fps: int, game_over_score: int, record_progress: bool):
+        self._init_pygame()
+
+        self._fps = fps
         self._score = [0, 0]    # 1P, 2P
         self._game_over_score = game_over_score
-        self._scene = Scene(difficulty)
+        self._scene = gamecore.Scene(True)
+        self._keyboard_action_1P = KeyCommandMap({
+                pygame.K_LEFT:  PlatformAction.MOVE_LEFT,
+                pygame.K_RIGHT: PlatformAction.MOVE_RIGHT,
+            }, PlatformAction.NONE)
+        self._keyboard_action_2P = KeyCommandMap({
+                pygame.K_a: PlatformAction.MOVE_LEFT,
+                pygame.K_d: PlatformAction.MOVE_RIGHT,
+            }, PlatformAction.NONE)
 
-        self._pygame_init()
+        self._record_handler = get_record_handler(record_progress, {
+                "status": (GameStatus.GAME_1P_WIN, GameStatus.GAME_2P_WIN)
+            }, get_log_dir())
 
-    def _pygame_init(self):
+    def _init_pygame(self):
         pygame.display.init()
         pygame.display.set_caption("PingPong")
-        self._surface = pygame.display.set_mode(Scene.area_rect.size)
+        self._screen = pygame.display.set_mode(gamecore.display_area_size)
+        self._clock = pygame.time.Clock()
 
         pygame.font.init()
         self._font = pygame.font.Font(None, 22)
-        self._font_pos_1P = (1, self._surface.get_height() - 21)
+        self._font_pos_1P = (1, gamecore.display_area_size[1] - 21)
         self._font_pos_2P = (1, 4)
-        self._font_pos_speed = (self._surface.get_width() - 120,
-            self._surface.get_height() - 21)
+        self._font_pos_speed = (gamecore.display_area_size[0] - 75, \
+            gamecore.display_area_size[1] - 21)
 
-    def update(self, command):
-        command_1P = (PlatformAction(command["ml_1P"])
-            if command["ml_1P"] in PlatformAction.__members__ else PlatformAction.NONE)
-        command_2P = (PlatformAction(command["ml_2P"])
-            if command["ml_2P"] in PlatformAction.__members__ else PlatformAction.NONE)
+    def game_loop(self):
+        while not quit_or_esc():
+            command_1P = self._keyboard_action_1P.get_command()
+            command_2P = self._keyboard_action_2P.get_command()
 
-        game_status = self._scene.update(command_1P, command_2P)
-        self._draw_screen()
+            scene_info = self._scene.fill_scene_info_obj(SceneInfo())
+            scene_info.command_1P = command_1P.value
+            scene_info.command_2P = command_2P.value
+            self._record_handler(scene_info)
 
-        if game_status != GameStatus.GAME_ALIVE:
-            print(game_status.value)
-            if self._game_over(game_status):
-                self._print_result()
-                return "QUIT"
+            game_status = self._scene.update(command_1P, command_2P)
 
-            return "RESET"
+            if game_status == GameStatus.GAME_1P_WIN or \
+               game_status == GameStatus.GAME_2P_WIN:
+                print(game_status.value)
+                self._record_handler(self._scene.fill_scene_info_obj(SceneInfo()))
+                if self._game_over(game_status):
+                    break
 
-    def _draw_screen(self):
-        """
-        Draw the scene to the display
-        """
-        self._surface.fill((0, 0, 0))
-        self._scene.draw_gameobjects(self._surface)
+                self._scene.reset()
 
-        font_surface_1P = self._font.render(
-            "1P: {}".format(self._score[0]), True, color_1P)
-        font_surface_2P = self._font.render(
-            "2P: {}".format(self._score[1]), True, color_2P)
-        font_surface_speed = self._font.render(
-            "Speed: {}".format(self._scene._ball.speed), True, (255, 255, 255))
-        self._surface.blit(font_surface_1P, self._font_pos_1P)
-        self._surface.blit(font_surface_2P, self._font_pos_2P)
-        self._surface.blit(font_surface_speed, self._font_pos_speed)
+            self._screen.fill((0, 0, 0))
+            self._scene.draw_gameobjects(self._screen)
+            self._draw_game_status()
+            pygame.display.flip()
 
-        pygame.display.flip()
+            self._clock.tick(self._fps)
+
+        if self._score[0] > self._score[1]:
+            print("1P wins!")
+        else:
+            print("2P wins!")
+        print("Final score: {}-{}".format(*self._score))
+
+        pygame.quit()
+
+    def _draw_game_status(self):
+        font_1P_surface = self._font.render( \
+            "1P score: {}".format(self._score[0]), True, gamecore.color_1P)
+        font_2P_surface = self._font.render( \
+            "2P score: {}".format(self._score[1]), True, gamecore.color_2P)
+        font_speed_surface = self._font.render( \
+            "Speed: {}".format(abs(self._scene._ball._speed[0])), True, (255, 255, 255))
+        self._screen.blit(font_1P_surface, self._font_pos_1P)
+        self._screen.blit(font_2P_surface, self._font_pos_2P)
+        self._screen.blit(font_speed_surface, self._font_pos_speed)
 
     def _game_over(self, status):
-        """
-        Check if the game is over
-        """
         if status == GameStatus.GAME_1P_WIN:
             self._score[0] += 1
-        elif status == GameStatus.GAME_2P_WIN:
-            self._score[1] += 1
-        else:   # Draw game
-            self._score[0] += 1
+        else:
             self._score[1] += 1
 
-        is_game_over = (self._score[0] == self._game_over_score or
-            self._score[1] == self._game_over_score)
+        is_game_over = self._score[0] == self._game_over_score or \
+            self._score[1] == self._game_over_score
 
         return is_game_over
-
-    def _print_result(self):
-        """
-        Print the result
-        """
-        if self._score[0] > self._score[1]:
-            win_side = "1P"
-        elif self._score[0] == self._score[1]:
-            win_side = "No one"
-        else:
-            win_side = "2P"
-
-        print("{} wins! Final score: {}-{}".format(win_side, *self._score))
-
-    def reset(self):
-        """
-        Reset the game
-        """
-        self._scene.reset()
-
-    def get_player_scene_info(self):
-        """
-        Get the scene information to be sent to the player
-        """
-        scene_info = self._scene.get_scene_info()
-        return {"ml_1P": scene_info, "ml_2P": scene_info}
-
-    def get_keyboard_command(self):
-        """
-        Get the command according to the pressed keys
-        """
-        key_pressed_list = pygame.key.get_pressed()
-
-        if   key_pressed_list[pygame.K_PERIOD]: cmd_1P = "SERVE_TO_LEFT"
-        elif key_pressed_list[pygame.K_SLASH]:  cmd_1P = "SERVE_TO_RIGHT"
-        elif key_pressed_list[pygame.K_LEFT]:   cmd_1P = "MOVE_LEFT"
-        elif key_pressed_list[pygame.K_RIGHT]:  cmd_1P = "MOVE_RIGHT"
-        else: cmd_1P = "NONE"
-
-        if   key_pressed_list[pygame.K_q]:  cmd_2P = "SERVE_TO_LEFT"
-        elif key_pressed_list[pygame.K_e]:  cmd_2P = "SERVE_TO_RIGHT"
-        elif key_pressed_list[pygame.K_a]:  cmd_2P = "MOVE_LEFT"
-        elif key_pressed_list[pygame.K_d]:  cmd_2P = "MOVE_RIGHT"
-        else: cmd_2P = "NONE"
-
-        return {"ml_1P": cmd_1P, "ml_2P": cmd_2P}
-
-    def get_game_info(self):
-        return {
-            "scene": {
-                "size": [200, 500],
-            },
-            "game_object": [
-                { "name": "platform_1P", "size": [40, 30], "color": [84, 149, 255] },
-                { "name": "platform_2P", "size": [40, 30], "color": [219, 70, 92] },
-                { "name": "blocker", "size": [30, 20], "color": [213, 224, 0] },
-                { "name": "ball", "size": [5, 5], "color": [66, 226, 126] },
-            ]
-        }
-
-    def get_game_progress(self):
-        scene_info = self._scene.get_scene_info()
-
-        return {
-            "status": {
-                "ball_speed": scene_info["ball_speed"],
-            },
-            "game_object": {
-                "ball": [scene_info["ball"]],
-                "platform_1P": [scene_info["platform_1P"]],
-                "platform_2P": [scene_info["platform_2P"]],
-            }
-        }
-
-    def get_game_result(self):
-        scene_info = self._scene.get_scene_info()
-
-        if self._score[0] > self._score[1]:
-            status = ["GAME_PASS", "GAME_OVER"]
-        elif self._score[0] < self._score[1]:
-            status = ["GAME_OVER", "GAME_PASS"]
-        else:
-            status = ["GAME_DRAW", "GAME_DRAW"]
-
-        return {
-            "frame_used": scene_info["frame"],
-            "result": status,
-            "ball_speed": scene_info["ball_speed"],
-        }

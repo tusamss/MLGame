@@ -1,6 +1,5 @@
 class FunctionDelegate:
-    """
-    Simulate the function delegate
+    """Simulate the function delegate
 
     Invoke the registered function by invoking the instance of FunctionDelegate.
     For example:
@@ -15,8 +14,7 @@ class FunctionDelegate:
         self._target_function = None
 
     def set_function(self, func):
-        """
-        Set the target function to the function delegate
+        """Set the target function to the function delegate
 
         @param func A function or a callable object
         """
@@ -29,8 +27,7 @@ class FunctionDelegate:
         self._target_function = func
 
     def __call__(self, *args, **kwargs):
-        """
-        Invoke the registered target function
+        """Invoke the registered target function
 
         This function is invoked by using the instance of FunctionDelegate as a function.
         """

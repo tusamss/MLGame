@@ -3,36 +3,46 @@ The script that send the instruction according to the keyboard input
 """
 
 import pygame
+import games.pingpong.communication as comm
+from games.pingpong.communication import (
+    SceneInfo, GameInstruction, GameStatus, PlatformAction
+)
 
-class MLPlay:
-    def __init__(self, side):
-        self._pygame_init()
-        print("Invisible joystick is used for the {} side."
-            .format(side))
+def wait_enter_key():
+    for event in pygame.event.get():
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+            return False
+    return True
 
-    def _pygame_init(self):
-        pygame.display.init()
-        pygame.display.set_mode((300, 100))
-        pygame.display.set_caption("Invisible joystick")
+def init_pygame():
+    pygame.display.init()
+    pygame.display.set_mode((300, 100))
+    pygame.display.set_caption("Invisible joystick")
 
-    def update(self, scene_info):
-        if scene_info["status"] != "GAME_ALIVE":
-            return "RESET"
+def ml_loop(side: str):
+    init_pygame()
 
-        pygame.event.pump()
+    print("Invisible joystick is used. " \
+        "Press Enter to start the {} ml process.".format(side))
+    while wait_enter_key():
+        pass
+
+    comm.ml_ready()
+
+    while True:
+        scene_info = comm.get_scene_info()
+
+        if scene_info.status == GameStatus.GAME_1P_WIN or \
+           scene_info.status == GameStatus.GAME_2P_WIN:
+            comm.ml_ready()
+            continue
+
         key_pressed_list = pygame.key.get_pressed()
         if key_pressed_list[pygame.K_LEFT]:
-            cmd = "MOVE_LEFT"
+            comm.send_instruction(scene_info.frame, PlatformAction.MOVE_LEFT)
         elif key_pressed_list[pygame.K_RIGHT]:
-            cmd = "MOVE_RIGHT"
-        elif key_pressed_list[pygame.K_PERIOD]:
-            cmd = "SERVE_TO_LEFT"
-        elif key_pressed_list[pygame.K_SLASH]:
-            cmd = "SERVE_TO_RIGHT"
+            comm.send_instruction(scene_info.frame, PlatformAction.MOVE_RIGHT)
         else:
-            cmd = "NONE"
+            comm.send_instruction(scene_info.frame, PlatformAction.NONE)
 
-        return cmd
-
-    def reset(self):
-        pass
+        pygame.event.pump()

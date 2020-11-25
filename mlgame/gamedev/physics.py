@@ -6,48 +6,18 @@ from pygame import Rect
 from pygame.sprite import Sprite
 from pygame.math import Vector2
 
-def collide_or_contact(sprite_a: Sprite, sprite_b: Sprite) -> bool:
+def collide_or_tangent(sprite_a: Sprite, sprite_b: Sprite) -> bool:
     """
-    Check if two sprites are colliding or contacting
+    Check if two sprites are colliding or tangent
     """
     rect_a = sprite_a.rect
     rect_b = sprite_b.rect
 
-    if (rect_a.left <= rect_b.right and
-        rect_a.right >= rect_b.left and
-        rect_a.top <= rect_b.bottom and
-        rect_a.bottom >= rect_b.top):
+    if rect_a.left <= rect_b.right and \
+       rect_a.right >= rect_b.left and \
+       rect_a.top <= rect_b.bottom and \
+       rect_a.bottom >= rect_b.top:
         return True
-    return False
-
-def moving_collide_or_contact(moving_sprite: Sprite, sprite: Sprite) -> bool:
-    """
-    Check if the moving sprite collides or contacts another sprite.
-
-    @param moving_sprite The sprite that moves in the scene.
-           It must contain `rect` and `last_pos` attributes, which both are `pygame.Rect`.
-    @param sprite The sprite that will be collided or contacted by `moving_sprite`.
-           It must contain `rect` attribute, which is also `pygame.Rect`.
-    """
-    # Generate the routine of 4 corners of the moving sprite
-    move_rect = moving_sprite.rect
-    move_last_pos = moving_sprite.last_pos
-    routines = (
-        (Vector2(move_last_pos.topleft), Vector2(move_rect.topleft)),
-        (Vector2(move_last_pos.topright), Vector2(move_rect.topright)),
-        (Vector2(move_last_pos.bottomleft), Vector2(move_rect.bottomleft)),
-        (Vector2(move_last_pos.bottomright), Vector2(move_rect.bottomright))
-    )
-
-    # Check any of routines collides the rect
-    ## Take the bottom and right into account when using the API of pygame
-    rect_expanded = sprite.rect.inflate(1, 1)
-    for routine in routines:
-        # Exclude the case that the `moving_sprite` goes from the surface of `sprite`
-        if (not rect_expanded.collidepoint(routine[0]) and
-            rect_collideline(sprite.rect, routine)):
-            return True
-
     return False
 
 def line_intersect(line_a, line_b) -> bool:
@@ -59,10 +29,10 @@ def line_intersect(line_a, line_b) -> bool:
     @param line_b Same as `line_a`
     """
     # line_a and line_b have the same end point
-    if (line_a[0] == line_b[0] or
-        line_a[1] == line_b[0] or
-        line_a[0] == line_b[1] or
-        line_a[1] == line_b[1]):
+    if line_a[0] == line_b[0] or \
+       line_a[1] == line_b[0] or \
+       line_a[0] == line_b[1] or \
+       line_a[1] == line_b[1]:
         return True
 
     # Set line_a to (u0, u0 + v0) and p0 = u0 + s * v0, and
@@ -90,8 +60,8 @@ def line_intersect(line_a, line_b) -> bool:
     s_det = v1.x * du.y - v1.y * du.x
     t_det = v0.x * du.y - v0.y * du.x
 
-    if ((det > 0 and 0 <= s_det <= det and 0 <= t_det <= det) or
-        (det < 0 and det <= s_det <= 0 and det <= t_det <= 0)):
+    if (det > 0 and 0 <= s_det <= det and 0 <= t_det <= det) or \
+       (det < 0 and det <= s_det <= 0 and det <= t_det <= 0):
         return True
 
     return False
@@ -104,41 +74,28 @@ def rect_collideline(rect: Rect, line) -> bool:
     @param line A tuple (Vector2, Vector2) representing both end points
            of line segment
     """
-    # Either of line ends is in the target rect.
-    rect_expanded = rect.inflate(1, 1)  # Take the bottom and right line into account
-    if rect_expanded.collidepoint(line[0]) or rect_expanded.collidepoint(line[1]):
+    line_top = (Vector2(rect.left, rect.top), Vector2(rect.right, rect.top))
+    line_bottom = (Vector2(rect.left, rect.bottom), Vector2(rect.right, rect.bottom))
+    line_left = (Vector2(rect.left, rect.top), Vector2(rect.left, rect.bottom))
+    line_right = (Vector2(rect.right, rect.top), Vector2(rect.right, rect.bottom))
+
+    intersect_num = 0
+    if line_intersect(line_top, line):    intersect_num += 1
+    if line_intersect(line_bottom, line): intersect_num += 1
+    if line_intersect(line_left, line):   intersect_num += 1
+    if line_intersect(line_right, line):  intersect_num += 1
+
+    if intersect_num >= 2:
         return True
+    
+    return False
 
-    line_top = (Vector2(rect.topleft), Vector2(rect.topright))
-    line_bottom = (Vector2(rect.bottomleft), Vector2(rect.bottomright))
-    line_left = (Vector2(rect.topleft), Vector2(rect.bottomleft))
-    line_right = (Vector2(rect.topright), Vector2(rect.bottomright))
-
-    return (line_intersect(line_top, line) or
-        line_intersect(line_bottom, line) or
-        line_intersect(line_left, line) or
-        line_intersect(line_right, line))
-
-def rect_break_or_contact_box(rect: Rect, box: Rect):
-    """
-    Determine if the `rect` breaks the `box` or it contacts the border of `box`
-
-    @param rect The Rect of the target rectangle
-    @param box The target box
-    """
-    return (
-        rect.left <= box.left or
-        rect.right >= box.right or
-        rect.top <= box.top or
-        rect.bottom >= box.bottom)
-
-def bounce_off_ip(bounce_obj_rect: Rect, bounce_obj_speed,
+def bounce_off_ip(bounce_obj_rect: Rect, bounce_obj_speed, \
     hit_obj_rect: Rect, hit_obj_speed):
     """
-    Calculate the speed and position of the `bounce_obj` after it bounces off the `hit_obj`.
-    The position of `bounce_obj_rect` and the value of `bounce_obj_speed` will be updated.
+    Update the speed and position of the `bounce_obj` after it bounces off the `hit_obj`.
 
-    This function should be called only when two objects are colliding.
+    This function is called only when two objects are colliding.
 
     @param bounce_obj_rect The Rect of the bouncing object
     @param bounce_obj_speed The 2D speed vector of the bouncing object.
@@ -151,98 +108,55 @@ def bounce_off_ip(bounce_obj_rect: Rect, bounce_obj_speed,
 
     # The relative position between top and bottom, and left and right
     # of two objects at the last frame
-    rect_diff_bT_hB = hit_obj_rect.bottom - bounce_obj_rect.top + speed_diff_y
-    rect_diff_bB_hT = hit_obj_rect.top - bounce_obj_rect.bottom + speed_diff_y
-    rect_diff_bL_hR = hit_obj_rect.right - bounce_obj_rect.left + speed_diff_x
-    rect_diff_bR_hL = hit_obj_rect.left - bounce_obj_rect.right + speed_diff_x
+    rect_diff_T_B = bounce_obj_rect.top - hit_obj_rect.bottom - speed_diff_y
+    rect_diff_B_T = bounce_obj_rect.bottom - hit_obj_rect.top - speed_diff_y
+    rect_diff_L_R = bounce_obj_rect.left - hit_obj_rect.right - speed_diff_x
+    rect_diff_R_L = bounce_obj_rect.right - hit_obj_rect.left - speed_diff_x
 
-    # Get the surface distance from the bouncing object to the hit object
-    # and the new position for the bouncing object if it really hit the object
-    # according to their relative position
-    ## The bouncing object is at the bottom
-    if rect_diff_bT_hB < 0 and rect_diff_bB_hT < 0:
-        surface_diff_y = rect_diff_bT_hB
-        extract_pos_y = hit_obj_rect.bottom
-    ## The bouncing object is at the top
-    elif rect_diff_bT_hB > 0 and rect_diff_bB_hT > 0:
-        surface_diff_y = rect_diff_bB_hT
-        extract_pos_y = hit_obj_rect.top - bounce_obj_rect.height
-    else:
-        surface_diff_y = -1 if speed_diff_y > 0 else 1
-
-    ## The bouncing object is at the right
-    if rect_diff_bL_hR < 0 and rect_diff_bR_hL < 0:
-        surface_diff_x = rect_diff_bL_hR
-        extract_pos_x = hit_obj_rect.right
-    ## The bouncing object is at the left
-    elif rect_diff_bL_hR > 0 and rect_diff_bR_hL > 0:
-        surface_diff_x = rect_diff_bR_hL
-        extract_pos_x = hit_obj_rect.left - bounce_obj_rect.width
-    else:
-        surface_diff_x = -1 if speed_diff_x > 0 else 1
-
-    # Calculate the duration to hit the surface for x and y coordination.
-    time_hit_y = surface_diff_y / speed_diff_y
-    time_hit_x = surface_diff_x / speed_diff_x
-
-    if time_hit_y >= 0 and time_hit_y >= time_hit_x:
+    # Set the position and speed of the bouncing object
+    # according to the relative position of two objects
+    if rect_diff_T_B > 0 and rect_diff_B_T > 0:
+        bounce_obj_rect.top = hit_obj_rect.bottom
         bounce_obj_speed[1] *= -1
-        bounce_obj_rect.y = extract_pos_y
+    elif rect_diff_T_B < 0 and rect_diff_B_T < 0:
+        bounce_obj_rect.bottom = hit_obj_rect.top
+        bounce_obj_speed[1] *= -1
 
-    if time_hit_x >= 0 and time_hit_y <= time_hit_x:
+    if rect_diff_L_R > 0 and rect_diff_R_L > 0:
+        bounce_obj_rect.left = hit_obj_rect.right
         bounce_obj_speed[0] *= -1
-        bounce_obj_rect.x = extract_pos_x
+    elif rect_diff_L_R < 0 and rect_diff_R_L < 0:
+        bounce_obj_rect.right = hit_obj_rect.left
+        bounce_obj_speed[0] *= -1
 
-def bounce_off(bounce_obj_rect: Rect, bounce_obj_speed,
-    hit_obj_rect: Rect, hit_obj_speed):
-    """
-    The alternative version of `bounce_off_ip`. The function returns the result
-    instead of updating the value of `bounce_obj_rect` and `bounce_obj_speed`.
-
-    @return A tuple (`new_bounce_obj_rect`, `new_bounce_obj_speed`)
-    """
-    new_bounce_obj_rect = bounce_obj_rect.copy()
-    new_bounce_obj_speed = bounce_obj_speed.copy()
-
-    bounce_off_ip(new_bounce_obj_rect, new_bounce_obj_speed,
-        hit_obj_rect, hit_obj_speed)
-
-    return new_bounce_obj_rect, new_bounce_obj_speed
-
-def bounce_in_box_ip(bounce_obj_rect: Rect, bounce_obj_speed,
-    box_rect: Rect):
+def bounce_in_box(bounce_obj_rect: Rect, bounce_object_speed, \
+    box_rect: Rect) -> bool:
     """
     Bounce the object if it hits the border of the box.
     The speed and the position of the `bounce_obj` will be updated.
 
     @param bounce_obj_rect The Rect of the bouncing object
     @param bounce_obj_speed The 2D speed vector of the bouncing object.
+    @return Whether the `bounce_obj` hits the box or not.
     """
+    hit = False
+
     if bounce_obj_rect.left <= box_rect.left:
         bounce_obj_rect.left = box_rect.left
-        bounce_obj_speed[0] *= -1
+        bounce_object_speed[0] *= -1
+        hit = True
     elif bounce_obj_rect.right >= box_rect.right:
         bounce_obj_rect.right = box_rect.right
-        bounce_obj_speed[0] *= -1
+        bounce_object_speed[0] *= -1
+        hit = True
 
     if bounce_obj_rect.top <= box_rect.top:
         bounce_obj_rect.top = box_rect.top
-        bounce_obj_speed[1] *= -1
+        bounce_object_speed[1] *= -1
+        hit = True
     elif bounce_obj_rect.bottom >= box_rect.bottom:
         bounce_obj_rect.bottom = box_rect.bottom
-        bounce_obj_speed[1] *= -1
+        bounce_object_speed[1] *= -1
+        hit = True
 
-def bounce_in_box(bounce_obj_rect: Rect, bounce_obj_speed,
-    box_rect: Rect):
-    """
-    The alternative version of `bounce_in_box_ip`. The function returns the result
-    instead of updating the value of `bounce_obj_rect` and `bounce_obj_speed`.
-
-    @return A tuple (new_bounce_obj_rect, new_bounce_obj_speed)
-    """
-    new_bounce_obj_rect = bounce_obj_rect.copy()
-    new_bounce_obj_speed = bounce_obj_speed.copy()
-
-    bounce_in_box_ip(new_bounce_obj_rect, new_bounce_obj_speed, box_rect)
-
-    return (new_bounce_obj_rect, new_bounce_obj_speed)
+    return hit
